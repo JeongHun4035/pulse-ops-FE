@@ -1,0 +1,74 @@
+{
+  "hash": "8bb1693e",
+  "configHash": "ff314643",
+  "lockfileHash": "8bb29829",
+  "browserHash": "df2fa1d8",
+  "optimized": {
+    "axios": {
+      "src": "../../node_modules/.pnpm/axios@1.20.0_debug@4.4.3_su_6186274800c1ea3a60f3ca401ef76104/node_modules/axios/index.js",
+      "file": "axios.js",
+      "fileHash": "57555076",
+      "needsInterop": false
+    },
+    "dayjs": {
+      "src": "../../node_modules/.pnpm/dayjs@1.11.23/node_modules/dayjs/dayjs.min.js",
+      "file": "dayjs.js",
+      "fileHash": "eb525e5e",
+      "needsInterop": true
+    },
+    "lucide-react": {
+      "src": "../../node_modules/.pnpm/lucide-react@1.60.0_@types+react@19.2.18_react@19.2.8/node_modules/lucide-react/dist/esm/lucide-react.mjs",
+      "file": "lucide-react.js",
+      "fileHash": "c126f105",
+      "needsInterop": false
+    },
+    "react-dom": {
+      "src": "../../node_modules/.pnpm/react-dom@19.2.8_react@19.2.8/node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "a5d0e12f",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/.pnpm/react-dom@19.2.8_react@19.2.8/node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "a445ec1e",
+      "needsInterop": true
+    },
+    "react-icons/io": {
+      "src": "../../node_modules/.pnpm/react-icons@5.7.0_react@19.2.8/node_modules/react-icons/io/index.mjs",
+      "file": "react-icons_io.js",
+      "fileHash": "b124f8ad",
+      "needsInterop": false
+    },
+    "react": {
+      "src": "../../node_modules/.pnpm/react@19.2.8/node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "20a68312",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../node_modules/.pnpm/react@19.2.8/node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "bc5a67ef",
+      "needsInterop": true
+    },
+    "react/jsx-runtime": {
+      "src": "../../node_modules/.pnpm/react@19.2.8/node_modules/react/jsx-runtime.js",
+      "file": "react_jsx-runtime.js",
+      "fileHash": "736aeb27",
+      "needsInterop": true
+    },
+    "recharts": {
+      "src": "../../node_modules/.pnpm/recharts@3.10.1_@types+reac_1fa5ffa4912182a4e895e896f75987aa/node_modules/recharts/es6/index.js",
+      "file": "recharts.js",
+      "fileHash": "44dcd9e5",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "rolldown-runtime-DC62tzP2": {
+      "file": "rolldown-runtime-DC62tzP2.js",
+      "isDynamicEntry": false
+    }
+  }
+}
