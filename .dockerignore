@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+.pnpm-store
+.vite-cache
+dist
+.env
+.env.*
+!.env.example

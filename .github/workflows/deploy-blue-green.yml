@@ -1,0 +1,166 @@
+name: PulseOps Frontend Blue-Green Deployment
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: pulseops-frontend-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  EKS_CLUSTER: pulseops-eks
+  K8S_NAMESPACE: pulseops
+  ECR_REPOSITORY: pulseops/frontend
+  ECR_REGISTRY: 699414615096.dkr.ecr.ap-northeast-2.amazonaws.com
+  AWS_ROLE_ARN: arn:aws:iam::699414615096:role/PulseOpsGitHubActionsRole
+  GATEWAY_URL: k8s-pulseops-pulseops-3cd7bee98d-2104214011.ap-northeast-2.elb.amazonaws.com
+
+jobs:
+  deploy:
+    name: Test, Build and Deploy Green
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Type check
+        run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Configure Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --name "$EKS_CLUSTER" \
+            --region "$AWS_REGION"
+
+      - name: Deploy image to Green
+        run: |
+          IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+
+          kubectl set image deployment/pulseops-frontend-green \
+            frontend="$IMAGE" \
+            -n "$K8S_NAMESPACE"
+
+          kubectl rollout status deployment/pulseops-frontend-green \
+            -n "$K8S_NAMESPACE" \
+            --timeout=300s
+
+      - name: Validate Green frontend
+        run: |
+          set -euo pipefail
+
+          POD="frontend-validation-${GITHUB_RUN_ID}"
+
+          cleanup() {
+            kubectl delete pod "$POD" \
+              -n "$K8S_NAMESPACE" \
+              --ignore-not-found --wait=false
+          }
+          trap cleanup EXIT
+
+          kubectl run "$POD" \
+            -n "$K8S_NAMESPACE" \
+            --image=curlimages/curl:8.12.1 \
+            --restart=Never \
+            --command -- sh -ec '
+              curl -fsS --max-time 10 \
+                http://pulseops-frontend-green/healthz >/dev/null
+              curl -fsS --max-time 10 \
+                http://pulseops-frontend-green/ >/dev/null
+            '
+
+          kubectl wait \
+            --for=jsonpath='{.status.phase}'=Succeeded \
+            "pod/$POD" \
+            -n "$K8S_NAMESPACE" \
+            --timeout=120s
+
+          kubectl logs "$POD" -n "$K8S_NAMESPACE"
+
+      - name: Switch production Service to Green
+        id: switch
+        run: |
+          kubectl patch service pulseops-frontend \
+            -n "$K8S_NAMESPACE" \
+            --type=merge \
+            -p '{"spec":{"selector":{"app":"pulseops-frontend","version":"green"}}}'
+
+      - name: Verify external frontend and rollback on failure
+        run: |
+          if ! curl -fsS \
+            --retry 10 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            --max-time 10 \
+            "http://${GATEWAY_URL}/" \
+            -o /dev/null; then
+
+            echo "External health check failed. Restoring Blue."
+            kubectl patch service pulseops-frontend \
+              -n "$K8S_NAMESPACE" \
+              --type=merge \
+              -p '{"spec":{"selector":{"app":"pulseops-frontend","version":"blue"}}}'
+            exit 1
+          fi
+
+          echo "Frontend Green deployment verified successfully."
+
+      - name: Show final deployment state
+        if: always()
+        run: |
+          kubectl get deployment,service -n "$K8S_NAMESPACE" || true
+          kubectl get pods -n "$K8S_NAMESPACE" \
+            -l app=pulseops-frontend -L version || true
