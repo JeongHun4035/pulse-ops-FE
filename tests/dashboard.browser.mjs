@@ -6,24 +6,37 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
-const executable = process.env.CHROME_PATH ?? [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-].find(existsSync)
+const executable = process.env.CHROME_PATH ?? ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(existsSync)
 assert.ok(executable, 'Set CHROME_PATH to a Chromium browser executable.')
 const origin = process.env.TEST_ORIGIN ?? 'http://localhost:5173'
 const profile = await mkdtemp(join(tmpdir(), 'pulseops-browser-'))
-const browser = spawn(executable, ['--headless=new', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=19327', '--user-data-dir=' + profile, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
+const browser = spawn(executable, [
+  '--headless=new',
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--remote-debugging-port=19327',
+  '--user-data-dir=' + profile,
+  'about:blank',
+], {
+  windowsHide: true,
+  stdio: 'ignore',
+})
 let socket
 try {
   let targets
   for (let i = 0; i < 60; i++) {
-    try { targets = await (await fetch('http://127.0.0.1:19327/json')).json(); break } catch { await delay(100) }
+    try {
+      targets = await (await fetch('http://127.0.0.1:19327/json')).json(); break
+    } catch {
+      await delay(100)
+    }
   }
   const target = targets?.find(item => item.type === 'page')
   assert.ok(target, 'Chrome debugging endpoint did not start.')
   socket = new WebSocket(target.webSocketDebuggerUrl)
-  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject })
+  await new Promise((resolve, reject) => {
+    socket.onopen = resolve; socket.onerror = reject
+  })
   let sequence = 0
   const pending = new Map()
   socket.onmessage = event => {
@@ -37,11 +50,22 @@ try {
   }
   const command = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++sequence
-    pending.set(id, { resolve, reject })
-    socket.send(JSON.stringify({ id, method, params }))
+    pending.set(id, {
+      resolve,
+      reject,
+    })
+    socket.send(JSON.stringify({
+      id,
+      method,
+      params,
+    }))
   })
   const evaluate = async expression => {
-    const result = await command('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
+    const result = await command('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    })
     if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails))
     return result.result.value
   }
@@ -53,7 +77,8 @@ try {
     throw new Error('Timed out: ' + expression)
   }
   await command('Page.enable')
-  await command('Page.addScriptToEvaluateOnNewDocument', { source: `
+  await command('Page.addScriptToEvaluateOnNewDocument', {
+    source: `
     window.__calls = []
     window.__sites = JSON.parse(sessionStorage.getItem('seedSites') ?? '[]')
     window.__failNextPost = false
@@ -115,7 +140,8 @@ try {
       }
       return Response.json(window.__sites)
     }
-  ` })
+  `,
+  })
   await command('Page.navigate', { url: origin })
   await waitFor("document.querySelector('.open-site-form') && !document.querySelector('.open-site-form').disabled && document.querySelector('.summary-value')?.textContent.includes('0')")
   await delay(150)
@@ -162,7 +188,9 @@ try {
   await delay(200)
   calls = await evaluate('window.__calls')
   assert.deepEqual(calls.slice(1).map(call => call.method + ' ' + call.path), [
-    'POST /api/v1/sites', 'GET /api/v1/sites', 'GET /api/v1/sites/1/history?all=true',
+    'POST /api/v1/sites',
+    'GET /api/v1/sites',
+    'GET /api/v1/sites/1/history?all=true',
   ])
   assert.equal(await evaluate('window.__pollCount()'), 1)
   assert.equal(await evaluate("document.querySelector('.common-toast--success [role=status]')?.textContent"), '사이트가 등록되었습니다.')
@@ -271,16 +299,31 @@ try {
   assert.equal(await evaluate("document.querySelectorAll('.chart-canvas .recharts-line-dot').length"), 5)
   console.log('PASS: checkboxes add independent chart series; only the newly checked site is fetched; null is not plotted as zero.')
 
-  for (const [label, query] of [['1분', 'minutes=30'], ['5분', 'hours=1'], ['30분', 'hours=6'], ['1시간', 'hours=6'], ['6시간', 'all=true'], ['24시간', 'all=true']]) {
+  for (const [label, query] of [
+    ['1분', 'minutes=30'],
+    ['5분', 'hours=1'],
+    ['30분', 'hours=6'],
+    ['1시간', 'hours=6'],
+    ['6시간', 'all=true'],
+    ['24시간', 'all=true'],
+  ]) {
     const beforeRange = await evaluate('window.__calls.length')
-    await evaluate("[...document.querySelectorAll('.range-control button')].find(button => button.textContent === " + JSON.stringify(label) + ").click()")
-    await waitFor("window.__calls.length === " + (beforeRange + 2) + " && !document.querySelector('.chart-meta [role=status]') && document.querySelectorAll('.recharts-line').length === 2")
+    await evaluate("[...document.querySelectorAll('.range-control button')].find(button => button.textContent === " + JSON.stringify(label) + ').click()')
+    await waitFor('window.__calls.length === ' + (beforeRange + 2) + " && !document.querySelector('.chart-meta [role=status]') && document.querySelectorAll('.recharts-line').length === 2")
     calls = await evaluate('window.__calls')
-    assert.deepEqual(calls.slice(beforeRange).map(call => call.path).sort(), ['/api/v1/sites/11/history?' + query, '/api/v1/sites/12/history?' + query])
+    assert.deepEqual(calls.slice(beforeRange).map(call => call.path)
+      .sort(), ['/api/v1/sites/11/history?' + query, '/api/v1/sites/12/history?' + query])
     assert.equal(await evaluate("document.querySelectorAll('.recharts-line').length"), 2)
     const labels = await evaluate("[...document.querySelectorAll('.chart-canvas text')].map(node => node.textContent).filter(text => text.includes(':') || text.includes('/'))")
     assert.equal(labels.length, 7)
-    const expectedStep = { '1분': 60000, '5분': 300000, '30분': 1800000, '1시간': 3600000, '6시간': 21600000, '24시간': 86400000 }[label]
+    const expectedStep = {
+      '1분': 60000,
+      '5분': 300000,
+      '30분': 1800000,
+      '1시간': 3600000,
+      '6시간': 21600000,
+      '24시간': 86400000,
+    }[label]
     const positions = labels.map(text => {
       const match = text.match(/^(?:(\d{2})\/(\d{2}) )?(\d{2}):(\d{2})$/)
       if (match) return Date.UTC(2000, Number(match[1] ?? 1) - 1, Number(match[2] ?? 1), Number(match[3]), Number(match[4]))
@@ -309,7 +352,7 @@ try {
   await evaluate("document.querySelector('thead input').click()")
   await waitFor("document.querySelectorAll('.chart-series-legend li').length === 0")
   await evaluate('window.__advance(30000)')
-  await waitFor("window.__calls.length === " + (beforeClear + 1) + " && !document.querySelector('.header-actions button').disabled")
+  await waitFor('window.__calls.length === ' + (beforeClear + 1) + " && !document.querySelector('.header-actions button').disabled")
   calls = await evaluate('window.__calls')
   assert.deepEqual(calls.slice(beforeClear).map(call => call.path), ['/api/v1/sites'])
   assert.equal(await evaluate("document.querySelectorAll('tbody input:checked').length"), 0)
@@ -361,6 +404,11 @@ try {
   await delay(500)
   assert.equal(dirname(resolve(profile)), resolve(tmpdir()))
   assert.ok(basename(profile).startsWith('pulseops-browser-'))
-  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  await rm(profile, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 200,
+  })
 }
 
